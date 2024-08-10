@@ -8,7 +8,7 @@ from table_transformer.row_col_detector import RowColDetector
 from ocr.ocr_model import TextExtract
 import csv
 import tempfile
-
+import pandas as pd
 
 
 class StatementParser:
@@ -22,32 +22,67 @@ class StatementParser:
             self.row_col_detector = row_col_detector
             self.ocr_model = ocr_model
         
-    def bankstatement2csv(self, pdf, output_path='output.csv'):
+    def bankstatement2csv(self, pdf, output_path='output.xlsx'):
         # Convert pdf to image
+        table_data = []
         images = PDF2ImageConvertor.pdf_to_images_from_path(pdf)
-        # Detect tables in pdf
-        tables = self.table_detector.detect(images[1])
-        table_image = tables[0]['image'].convert("RGB")
-        # Perform ocr to get ocr text and bbox coordinates on cropped table
-        with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
-            temp_filename = temp_file.name
-            # Save the image to the temporary file
-            table_image.save(temp_filename)
-            result = self.ocr_model.run_ocr(temp_filename)
-        ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
-        # Get all rows and columns via the RowColDetector
-        row_columns = self.row_col_detector.detect(tables[0]['image'].convert("RGB"))
-        row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
-        # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-        data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
-        self.create_csv_from_data(data, output_path)
+        for image in images:
+            # Detect tables in pdf
+            tables = self.table_detector.detect(image)
+            for table in tables:
+                table_image = table['image'].convert("RGB")
+                table_image_w, table_image_h = table_image.size
+
+                # Perform ocr to get ocr text and bbox coordinates on cropped table
+                with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
+                    temp_filename = temp_file.name
+                    # Save the image to the temporary file
+                    table_image.save(temp_filename)
+                    result = self.ocr_model.run_ocr(temp_filename)
+                ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
+                # Get all rows and columns via the RowColDetector
+                row_columns = self.row_col_detector.detect(table_image)
+                row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
+                # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
+                data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                table_data.append(data)
+        #print(table_data)
+        self.create_sheets_from_data(table_data, output_path)
+    
+    
+    def dissect_image_in_half(self, image):
+        # Get the image dimensions
+        width, height = image.size
+
+        # Calculate the midpoint of the height
+        midpoint = height // 2
+
+        # Crop the image into two halves
+        upper_half = image.crop((0, 0, width, midpoint))
+        lower_half = image.crop((0, midpoint, width, height))
+
+        return [upper_half, lower_half]
     
     def create_csv_from_data(self, data, output_path):
         with open(output_path,'w') as result_file:
             wr = csv.writer(result_file, dialect='excel')
             for row, row_text in data.items():
                 wr.writerow(row_text)
-        
+                
+    def create_sheets_from_data(self, data, output_path):
+        # Create a Pandas Excel writer using openpyxl as the engine
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+            # Iterate over the list of dictionaries
+            for idx, sheet_data in enumerate(data):
+                if sheet_data:
+                    # Create a DataFrame from the dictionary
+                    df = pd.DataFrame(sheet_data)
+                    # Transpose the DataFrame so rows become columns and columns become rows
+                    df = df.transpose()
+                    # Write the DataFrame to a sheet
+                    sheet_name = f"Sheet{idx + 1}"
+                    df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+
         
             
     def apply_ocr(self, cell_coordinates, ocr_results):
