@@ -20,7 +20,7 @@ class Detector:
         return b
 
 
-    def outputs_to_objects(outputs, img_size, id2label, pad=False):
+    def outputs_to_objects(self,outputs, img_size, id2label, pad=False):
 
         m = outputs.logits.softmax(-1).max(-1)
         pred_labels = list(m.indices.detach().cpu().numpy())[0]

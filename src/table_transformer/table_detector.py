@@ -1,8 +1,8 @@
 from torchvision import transforms
 from transformers import AutoModelForObjectDetection
 import torch
-from src.utils.transformations import MaxResize
-from src.table_transformer.detector import Detector
+from utils.transformations import MaxResize
+from table_transformer.detector import Detector
 
 
 class TableDetector(Detector):
