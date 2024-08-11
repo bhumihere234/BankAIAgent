@@ -32,20 +32,50 @@ class StatementParser:
             for table in tables:
                 table_image = table['image'].convert("RGB")
                 table_image_w, table_image_h = table_image.size
+                # if the image height is beyond a threshold, split the image into 2
+                if table_image_h>1000:
+                    # This section needs refactoring. This is a hack.
+                    dissected_tables = self.dissect_image_in_half(table_image)
+                    for idx, table_image in enumerate(dissected_tables):
+                        with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
+                            temp_filename = temp_file.name
+                            # Save the image to the temporary file
+                            table_image.save(temp_filename)
+                            result = self.ocr_model.run_ocr(temp_filename)
+                        ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
+                        # Get all rows and columns via the RowColDetector
+                        row_columns = self.row_col_detector.detect(table_image)
+                        row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
+                        # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
+                        if idx == 1:
+                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                            # Collect changes in a separate dictionary
+                            changes = {}
+                            for k, v in list(data2.items()):  # Convert to list to avoid runtime errors
+                                new = data_key_last_idx + list(data2.keys()).index(k) + 1
+                                changes[new] = v
 
-                # Perform ocr to get ocr text and bbox coordinates on cropped table
-                with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
-                    temp_filename = temp_file.name
-                    # Save the image to the temporary file
-                    table_image.save(temp_filename)
-                    result = self.ocr_model.run_ocr(temp_filename)
-                ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
-                # Get all rows and columns via the RowColDetector
-                row_columns = self.row_col_detector.detect(table_image)
-                row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
-                # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-                data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
-                table_data.append(data)
+                            data1.update(changes)
+                        else:
+                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                            if not data1:
+                                break
+                            data_key_last_idx = list(data1.keys())[-1]
+                    table_data.append(data1)
+                else:
+                    # Perform ocr to get ocr text and bbox coordinates on cropped table
+                    with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
+                        temp_filename = temp_file.name
+                        # Save the image to the temporary file
+                        table_image.save(temp_filename)
+                        result = self.ocr_model.run_ocr(temp_filename)
+                    ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
+                    # Get all rows and columns via the RowColDetector
+                    row_columns = self.row_col_detector.detect(table_image)
+                    row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
+                    # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
+                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                    table_data.append(data)
         #print(table_data)
         self.create_sheets_from_data(table_data, output_path)
     
