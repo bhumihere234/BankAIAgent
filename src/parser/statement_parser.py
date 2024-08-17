@@ -2,6 +2,7 @@ from transformers import TableTransformerForObjectDetection
 import torch
 from utils.transformations import MaxResize
 from torchvision import transforms
+from torchvision.ops import nms
 from utils.pdf_to_image_convertor import PDF2ImageConvertor
 from table_transformer.table_detector import TableDetector
 from table_transformer.row_col_detector import RowColDetector
@@ -48,12 +49,13 @@ class StatementParser:
                         ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
                         # Get all rows and columns via the RowColDetector
                         row_columns = self.row_col_detector.detect(table_image)
+                        row_columns = self.clean_overlapping_rows(row_columns)
                         if self.show_detections:
                             self.visualize_detections(table_image, row_columns, ocr_results)
                         row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                         # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
                         if idx == 1:
-                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
                             # Collect changes in a separate dictionary
                             changes = {}
                             for k, v in list(data2.items()):  # Convert to list to avoid runtime errors
@@ -62,7 +64,7 @@ class StatementParser:
 
                             data1.update(changes)
                         else:
-                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
                             if not data1:
                                 break
                             data_key_last_idx = list(data1.keys())[-1]
@@ -77,14 +79,102 @@ class StatementParser:
                     ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
                     # Get all rows and columns via the RowColDetector
                     row_columns = self.row_col_detector.detect(table_image)
+                    row_columns = self.clean_overlapping_rows(row_columns)
                     if self.show_detections:
                         self.visualize_detections(table_image, row_columns, ocr_results)
                     row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                     # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
+                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
                     table_data.append(data)
         #print(table_data)
         self.create_sheets_from_data(table_data, output_path)
+        
+    @staticmethod 
+    def is_overlapping(row1, row2):
+        row1_y_start, row2_y_start = row1['bbox'][1], row2['bbox'][1]
+        row1_y_end, row2_y_end = row1['bbox'][3], row2['bbox'][3]
+        # Check if there's overlap between the two rows. 
+        # Overlap happens if row2_start
+        if (row1_y_end> row2_y_start):
+            return True
+        return False
+    
+    @staticmethod
+    def apply_non_max_suppression(rows) -> list[dict]:
+        results = []
+        # print("="*100, "Overlapping Rows", "="*50)
+        # print(rows[0], "\n")
+        # print("overlapping with")
+        # print(rows[1:], "\n")
+        # print("-"*100, "After NMS", "-"*50)
+        bboxes = [row['bbox'] for row in rows]
+        scores = [row['score'] for row in rows]
+        iou_threshold = 0.1
+        rows_after_nms = nms(boxes=torch.tensor(bboxes), scores=torch.tensor(scores), iou_threshold=iou_threshold)
+        for row_idx in rows_after_nms:
+            results.append( rows[row_idx.item()] )
+        # print(results)
+        # print("="*100)
+        
+        return results
+        
+    
+    def clean_overlapping_rows(self,row_columns):
+        processed_row_columns = []
+        rows = [entry for entry in row_columns if entry['label'] == 'table row' and entry['score']>= self.row_col_detector.row_threshold]
+        rows.sort(key=lambda x: x['bbox'][1])
+        candidate_rows = []
+        #[1,2,3,4,5,6]
+        i = 0
+        rows_to_check = [idx for idx in range(len(rows))]
+        rows_checked = []
+        # Go over every rows identified, and look for overlapping rows to apply non max suppresion.
+        while i<len(rows)-1:
+            row1, row2 = rows[i], rows[i+1]
+            # Check if the two rows are overlapping
+            rows_are_overlapping = self.is_overlapping(row1,row2)
+            # If the two rows are overlapping, find all the overlapping rows
+            if rows_are_overlapping:
+                nms_candidates = []
+                # Mark the row that will be compared for overlaps.
+                start_row = row1
+                nms_candidates.append(start_row)
+                nms_candidates.append(row2)
+                # Append the two indecies that we just checked to track processed rows.
+                rows_checked.append(i)
+                rows_checked.append(i+1)
+                i+=2
+                # Check for all the rows that overlap with the starting row being compared.
+                while i<len(rows) and rows_are_overlapping:
+                    row = rows[i]
+                    rows_are_overlapping = self.is_overlapping(start_row,row)
+                    if rows_are_overlapping:
+                        nms_candidates.append(row)
+                        # Append the index that we just checked to track processed rows.
+                        rows_checked.append(i)
+                        i+=1
+                post_nms_rows = self.apply_non_max_suppression(nms_candidates)
+                candidate_rows.extend(post_nms_rows)
+                    
+            # Else if they aren't overlapping, they become part of the candidate rows
+            else:
+                candidate_rows.append(row1)
+                candidate_rows.append(row2)
+                # Append the two indecies that we just checked to track processed rows.
+                rows_checked.append(i)
+                rows_checked.append(i+1)
+                i+=2
+        # Make sure no rows went unchecked. This can happen for the last index.
+        for row in rows_to_check:
+            if row not in rows_checked:
+                candidate_rows.append(rows[row])
+        
+        columns = [entry for entry in row_columns if entry['label'] == 'table column' and entry['score']>= self.row_col_detector.col_threshold]
+        processed_row_columns.extend(columns)
+        processed_row_columns.extend(candidate_rows)
+        
+        return processed_row_columns
+        
     
     
     def dissect_image_in_half(self, image):
@@ -111,14 +201,18 @@ class StatementParser:
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             # Iterate over the list of dictionaries
             for idx, sheet_data in enumerate(data):
+                # Write the DataFrame to a sheet
+                sheet_name = f"Sheet{idx + 1}"
                 if sheet_data:
                     # Create a DataFrame from the dictionary
-                    df = pd.DataFrame(sheet_data)
-                    # Transpose the DataFrame so rows become columns and columns become rows
-                    df = df.transpose()
-                    # Write the DataFrame to a sheet
-                    sheet_name = f"Sheet{idx + 1}"
-                    df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+                    try:
+                        df = pd.DataFrame(sheet_data)
+                        # Transpose the DataFrame so rows become columns and columns become rows
+                        df = df.transpose()
+                        df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+                    except Exception as e:
+                        print(f"Error converting to sheet for {sheet_name}- {e}")
+                        continue
 
     def visualize_detections(self, cropped_table, cells, ocr_results):
         cropped_table_visualized = cropped_table.copy()
@@ -150,13 +244,14 @@ class StatementParser:
         return new_bbox
         
             
-    def apply_ocr(self, cell_coordinates, ocr_results):
+    def apply_ocr(self, cell_coordinates, ocr_results, padding=0):
         # let's OCR row by row
         data = dict()
         max_num_columns = 0
         for idx, row in enumerate(cell_coordinates):
             row_text = []
             for cell in row["cells"]:
+                cell['cell'] = self.add_padding_to_bbox(cell['cell'], pad=padding)
                 line = self.words_in_cell(cell['cell'], ocr_results)
                 if len(line)>0:
                     row_text.append(line)
