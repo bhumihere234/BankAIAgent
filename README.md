@@ -26,3 +26,6 @@ Most banks present their statements in a tabular format with transactions detail
 ![image](docs/assets/main_diagram.png)
 
 [More updates to come]
+
+#### Roadmap
+1. Implement Spreadsheet LLM based on this [paper](https://arxiv.org/pdf/2407.09025v1) to interact with the generated spreadsheet.
