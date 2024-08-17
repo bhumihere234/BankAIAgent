@@ -45,17 +45,6 @@ class RowColDetector(Detector):
 
         # Sort rows and columns by their Y and X coordinates, respectively
         rows.sort(key=lambda x: x['bbox'][1])
-
-        # row_processed = []
-        # i=0
-        # while i<len(rows)-1:
-        #     row1, row2 = rows[i], rows[i+1]
-        #     row, to_merge = merge_rows(row1, row2)
-        #     row_processed.append(row)
-        #     if to_merge:
-        #         i+=2
-        #     else:
-        #         i+=1
             
         columns.sort(key=lambda x: x['bbox'][0])
 
