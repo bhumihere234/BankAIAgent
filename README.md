@@ -17,4 +17,6 @@ The BankAIAgent is designed to be a assistant for your personal finances. Keepin
 ### Problem Statement
 Most banks present their statements in a tabular format with transactions detailed in some chronological format.Therefore, parsing bank statements can be defined as a combination of Table Detection and Table Structure Detection problem. More specifically, we need a system capable of identifying tables within these statements, and then detecting those transactions. And since each transaction is laid out in a row and columnar fashion, we'll need a model that is capable of identifying rows and columns. For this project, we'll use Microsoft's Table Transformer model to solve these problems. 
 
+![image](docs/assets/main_diagram.png)
+
 [More updates to come]
