@@ -9,6 +9,7 @@ from ocr.ocr_model import TextExtract
 import csv
 import tempfile
 import pandas as pd
+from PIL import ImageDraw
 
 
 class StatementParser:
@@ -16,11 +17,13 @@ class StatementParser:
             self,
             table_detector:TableDetector = TableDetector(),
             row_col_detector: RowColDetector = RowColDetector(),
-            ocr_model: TextExtract = TextExtract()
+            ocr_model: TextExtract = TextExtract(),
+            show_detections:bool = False
         ) -> None:
             self.table_detector = table_detector
             self.row_col_detector = row_col_detector
             self.ocr_model = ocr_model
+            self.show_detections = show_detections
         
     def bankstatement2csv(self, pdf, output_path='output.xlsx'):
         # Convert pdf to image
@@ -45,6 +48,8 @@ class StatementParser:
                         ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
                         # Get all rows and columns via the RowColDetector
                         row_columns = self.row_col_detector.detect(table_image)
+                        if self.show_detections:
+                            self.visualize_detections(table_image, row_columns, ocr_results)
                         row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                         # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
                         if idx == 1:
@@ -72,6 +77,8 @@ class StatementParser:
                     ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
                     # Get all rows and columns via the RowColDetector
                     row_columns = self.row_col_detector.detect(table_image)
+                    if self.show_detections:
+                        self.visualize_detections(table_image, row_columns, ocr_results)
                     row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                     # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
                     data = self.apply_ocr(row_columns_cell_coordinates, ocr_results)
@@ -113,6 +120,34 @@ class StatementParser:
                     sheet_name = f"Sheet{idx + 1}"
                     df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
 
+    def visualize_detections(self, cropped_table, cells, ocr_results):
+        cropped_table_visualized = cropped_table.copy()
+        draw = ImageDraw.Draw(cropped_table_visualized)
+        c = ['red', 'blue', 'yellow']
+        i = 0
+        for cell in cells:
+            if cell['label'] == 'table row':
+                if cell['score']>=self.row_col_detector.row_threshold:
+                    #print(cell['score'])
+                    #continue
+                    draw.rectangle(cell["bbox"], outline="red", width=5)
+            else:
+                
+                if cell['score']>=self.row_col_detector.col_threshold:
+                    cell["bbox"] = self.add_padding_to_bbox(cell["bbox"], pad=0)
+                    draw.rectangle(cell["bbox"], outline='blue', width=10)
+                    i+=1
+
+        for ocr_result in ocr_results:
+            draw.rectangle(ocr_result['bbox'], outline='blue', width=1)
+
+        cropped_table_visualized.show()
+    
+    @staticmethod
+    def add_padding_to_bbox(bbox, pad=0):
+        x1,y1,x2,y2 = bbox
+        new_bbox = [x1-pad, y1-pad, x2+pad, y2+pad]
+        return new_bbox
         
             
     def apply_ocr(self, cell_coordinates, ocr_results):
