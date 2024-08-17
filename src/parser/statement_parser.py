@@ -19,12 +19,14 @@ class StatementParser:
             table_detector:TableDetector = TableDetector(),
             row_col_detector: RowColDetector = RowColDetector(),
             ocr_model: TextExtract = TextExtract(),
-            show_detections:bool = False
+            show_detections:bool = False,
+            cell_padding:int=10
         ) -> None:
             self.table_detector = table_detector
             self.row_col_detector = row_col_detector
             self.ocr_model = ocr_model
             self.show_detections = show_detections
+            self.cell_padding = cell_padding
         
     def bankstatement2csv(self, pdf, output_path='output.xlsx'):
         # Convert pdf to image
@@ -55,7 +57,7 @@ class StatementParser:
                         row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                         # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
                         if idx == 1:
-                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
+                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
                             # Collect changes in a separate dictionary
                             changes = {}
                             for k, v in list(data2.items()):  # Convert to list to avoid runtime errors
@@ -64,7 +66,7 @@ class StatementParser:
 
                             data1.update(changes)
                         else:
-                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
+                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
                             if not data1:
                                 break
                             data_key_last_idx = list(data1.keys())[-1]
@@ -84,7 +86,7 @@ class StatementParser:
                         self.visualize_detections(table_image, row_columns, ocr_results)
                     row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
                     # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=10)
+                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
                     table_data.append(data)
         #print(table_data)
         self.create_sheets_from_data(table_data, output_path)
