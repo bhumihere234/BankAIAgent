@@ -3,6 +3,8 @@
 | ![example](docs/assets/example.png) |
 | :-: |
 | *Image taken from https://watcher.guru/news/can-i-edit-chase-bank-statement-pdf* |
+| ![example](docs/assets/example2.png) |
+| *Image taken from https://mbcvirtual.com/product/3-months-bank-of-america-statements-personal-fundamental-checking/* |
 
 The BankAIAgent is designed to be a assistant for your personal finances. Keeping a record of past financial transactions enable us to make better financial decisions, such as identifying recurring payments and cutting those costs, budgeting, and bucketing transactions into categories. Most banks today provide a downloadable csv format for your past transaction histories, which could help us analyze our financials; however, when it comes to businesses who recieve bank statements as supported documents, analyzing these documents are often resorted to manual labor. Therefore, this project aims to bridge that gap, and provides a tool to parse and analyze bank statements.
 
