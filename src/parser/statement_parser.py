@@ -40,56 +40,75 @@ class StatementParser:
                 table_image_w, table_image_h = table_image.size
                 # if the image height is beyond a threshold, split the image into 2
                 if table_image_h>1000:
-                    # This section needs refactoring. This is a hack.
-                    dissected_tables = self.dissect_image_in_half(table_image)
+                    ocr_results_split = []
+                    row_columns_cell_coordinates_split = []
+                    dissected_tables = self.split_image_in_half(table_image)
+                    # For every split, get the ocr results and row_col cel coordinates
                     for idx, table_image in enumerate(dissected_tables):
-                        with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
-                            temp_filename = temp_file.name
-                            # Save the image to the temporary file
-                            table_image.save(temp_filename)
-                            result = self.ocr_model.run_ocr(temp_filename)
-                        ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
-                        # Get all rows and columns via the RowColDetector
-                        row_columns = self.row_col_detector.detect(table_image)
-                        row_columns = self.clean_overlapping_rows(row_columns)
-                        if self.show_detections:
-                            self.visualize_detections(table_image, row_columns, ocr_results)
-                        row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
-                        # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-                        if idx == 1:
-                            data2 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
-                            # Collect changes in a separate dictionary
-                            changes = {}
-                            for k, v in list(data2.items()):  # Convert to list to avoid runtime errors
-                                new = data_key_last_idx + list(data2.keys()).index(k) + 1
-                                changes[new] = v
+                        # Get all rows,columns and cell data via the RowColDetector
+                        row_columns, row_columns_cell_coordinates = self.identify_row_col_cell(table_image=table_image)
+                        # Perform ocr to get ocr text and bbox coordinates on cropped table
+                        ocr_result =  self.run_ocr_engine(table_image=table_image)
+                        ocr_results_split.append(ocr_result)
+                        row_columns_cell_coordinates_split.append(row_columns_cell_coordinates)
 
-                            data1.update(changes)
-                        else:
-                            data1 = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
-                            if not data1:
-                                break
-                            data_key_last_idx = list(data1.keys())[-1]
+                        if self.show_detections:
+                            self.visualize_detections(table_image, row_columns, ocr_result)
+                    # Merge the two splits and apply the ocr'ed text to the row-col cells
+                    data1 = self.merge_split_table_data(ocr_results=ocr_results_split, row_columns_cell_coordinates=row_columns_cell_coordinates_split)
                     table_data.append(data1)
                 else:
+                    # Get all rows,columns and cell data via the RowColDetector
+                    row_columns, row_columns_cell_coordinates = self.identify_row_col_cell(table_image=table_image)
                     # Perform ocr to get ocr text and bbox coordinates on cropped table
-                    with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
-                        temp_filename = temp_file.name
-                        # Save the image to the temporary file
-                        table_image.save(temp_filename)
-                        result = self.ocr_model.run_ocr(temp_filename)
-                    ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
-                    # Get all rows and columns via the RowColDetector
-                    row_columns = self.row_col_detector.detect(table_image)
-                    row_columns = self.clean_overlapping_rows(row_columns)
+                    ocr_results =  self.run_ocr_engine(table_image=table_image)
+                    # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
+                    data = self.apply_ocr_results_to_cell(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
                     if self.show_detections:
                         self.visualize_detections(table_image, row_columns, ocr_results)
-                    row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
-                    # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
-                    data = self.apply_ocr(row_columns_cell_coordinates, ocr_results, padding=self.cell_padding)
                     table_data.append(data)
         #print(table_data)
         self.create_sheets_from_data(table_data, output_path)
+        
+    def merge_split_table_data(self,ocr_results, row_columns_cell_coordinates):
+        # Combine OCR output with cell coordinates to get text in row-col intersection(cell)
+        for idx, ocr_result in enumerate(ocr_results):
+                if idx == 1:
+                    data2 = self.apply_ocr_results_to_cell(row_columns_cell_coordinates[1], ocr_result, padding=self.cell_padding)
+                    # Collect changes in a separate dictionary
+                    changes = {}
+                    for k, v in list(data2.items()):  # Convert to list to avoid runtime errors
+                        new = data_key_last_idx + list(data2.keys()).index(k) + 1
+                        changes[new] = v
+                    data1.update(changes)
+                else:
+                    data1 = self.apply_ocr_results_to_cell(row_columns_cell_coordinates[0], ocr_result, padding=self.cell_padding)
+                    if not data1:
+                        break
+                    data_key_last_idx = list(data1.keys())[-1]
+        return data1
+    
+    def run_ocr_engine(self, table_image):
+        # Perform ocr to get ocr text and bbox coordinates on cropped table
+        result = self.create_temp_file_to_run_ocr(table_image=table_image)
+        ocr_results =  self.ocr_model.get_ocr_text_and_bbox(result)
+        return ocr_results
+    
+    def identify_row_col_cell(self, table_image):
+        # Get all rows and columns via the RowColDetector
+        row_columns = self.row_col_detector.detect(table_image)
+        row_columns = self.clean_overlapping_rows(row_columns)
+        row_columns_cell_coordinates = self.row_col_detector.get_cell_coordinates_by_row(row_columns)
+        return row_columns, row_columns_cell_coordinates
+        
+
+    def create_temp_file_to_run_ocr(self, table_image):
+        with tempfile.NamedTemporaryFile(delete=True, suffix='.png') as temp_file:
+            temp_filename = temp_file.name
+            # Save the image to the temporary file
+            table_image.save(temp_filename)
+            result = self.ocr_model.run_ocr(temp_filename)
+            return result
         
     @staticmethod 
     def is_overlapping(row1, row2):
@@ -179,7 +198,7 @@ class StatementParser:
         
     
     
-    def dissect_image_in_half(self, image):
+    def split_image_in_half(self, image):
         # Get the image dimensions
         width, height = image.size
 
@@ -246,7 +265,7 @@ class StatementParser:
         return new_bbox
         
             
-    def apply_ocr(self, cell_coordinates, ocr_results, padding=0):
+    def apply_ocr_results_to_cell(self, cell_coordinates, ocr_results, padding=0):
         # let's OCR row by row
         data = dict()
         max_num_columns = 0
