@@ -1,31 +1,36 @@
-# BankAIAgent
+# BankAIAgent – Intelligent Bank Statement Parser (Colab + AI)
 
-| ![example](docs/assets/example.png) |
-| :-: |
-| *Image taken from https://watcher.guru/news/can-i-edit-chase-bank-statement-pdf* |
-| ![example](docs/assets/example2.png) |
-| *Image taken from https://mbcvirtual.com/product/3-months-bank-of-america-statements-personal-fundamental-checking/* |
+This project is a **machine learning-powered tool** for extracting structured data from bank statement PDFs using OCR, NLP, and automation pipelines.
 
-The BankAIAgent is designed to be a assistant for your personal finances. Keeping a record of past financial transactions enable us to make better financial decisions, such as identifying recurring payments and cutting those costs, budgeting, and bucketing transactions into categories. Most banks today provide a downloadable csv format for your past transaction histories, which could help us analyze our financials; however, when it comes to businesses who recieve bank statements as supported documents, analyzing these documents are often resorted to manual labor. Therefore, this project aims to bridge that gap, and provides a tool to parse and analyze bank statements.
+## Features
+- Parse scanned or digital bank statements (e.g. HDFC, ICICI, SBI, YES Bank).
+- Extract structured fields: `Date`, `Narration`, `Debit`, `Credit`, `Balance`, `Cheque Number`.
+- Handle multi-line entries and noisy data using AI + rule-based logic.
+- Export results to Excel or Google Sheets.
+- Built and trained using **Google Colab**, **Python**, **OCR (Tesseract)**, and **spaCy**.
+
+## Notebooks
+| File | Description |
+|------|-------------|
+| [`ML_B2E.ipynb`](notebooks/ML_B2E.ipynb) | Core AI pipeline for parsing and structuring bank statement data |
+
+## Technologies Used
+- Python, Pandas, Regex
+- Tesseract OCR, PaddleOCR
+- spaCy NLP, scikit-learn
+- Google Colab, GitHub
+
+## Future Enhancements
+- UI for uploading PDFs and downloading Excel files
+- Smart categorization of transactions
+- Integration with financial dashboards
 
 ## Getting Started
-1. Instal the required libraries via `pip install -r requirements.txt`.
-2. Go to `src/main.py` and open the file, and you'll see:
-    ```python
-    from parser.statement_parser import StatementParser
+1. Open [`ML_B2E.ipynb`](https://colab.research.google.com/github/bhumihere234/BankAIAgent/blob/main/notebooks/ML_B2E.ipynb) in Google Colab
+2. Upload sample bank statement
+3. Run all cells and export to CSV/Excel
 
-    bs_parse = StatementParser()
-    bs_parse.bankstatement2csv(pdf='path/to/your/bank-statement.pdf')
-    ```
-    - Set the path to your pdf document, and run the python file via `python3 main.py` and you'll generate an `output.xlsx` file with the extracted transactions.
-- **Note**: Currently this model performs well with Bank of America and Chase bank since the models used for this projects were finetuned on those statements.
-
-### Problem Statement
-Most banks present their statements in a tabular format with transactions detailed in some chronological format.Therefore, parsing bank statements can be defined as a combination of Table Detection and Table Structure Detection problem. More specifically, we need a system capable of identifying tables within these statements, and then detecting those transactions. And since each transaction is laid out in a row and columnar fashion, we'll need a model that is capable of identifying rows and columns. For this project, we'll use Microsoft's Table Transformer model to solve these problems. 
-
-![image](docs/assets/main_diagram.png)
-
-[More updates to come]
-
-#### Roadmap
-1. Implement Spreadsheet LLM based on this [paper](https://arxiv.org/pdf/2407.09025v1) to interact with the generated spreadsheet.
+## Contact
+For questions or collaboration:
+- Created by **[Your Name]**
+- Email: [your.email@example.com]
